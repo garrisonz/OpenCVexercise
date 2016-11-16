@@ -1,3 +1,6 @@
+# USAGE
+# python roomDetection.py --image room.png
+
 # import the necessary packages
 import argparse
 import imutils

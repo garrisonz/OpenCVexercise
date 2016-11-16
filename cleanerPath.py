@@ -1,5 +1,5 @@
 # USAGE
-# python center_of_shape.py --image shapes_and_colors.png
+# python cleanerPath.py --image singleRoom.png
 
 # import the necessary packages
 import argparse
