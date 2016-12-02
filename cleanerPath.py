@@ -1,6 +1,11 @@
 # USAGE
 # python cleanerPath.py --image singleRoom.png
 
+# ID 		Developer	comment
+# TZ1202_1	Tony		fix incorrect path
+# TZ1202_2	Tony		Draw path from top to down, from left to right
+
+
 # import the necessary packages
 import argparse
 import imutils
@@ -13,15 +18,10 @@ def grouped(iterable, n):
     "s -> (s0,s1,s2,...sn-1), (sn,sn+1,sn+2,...s2n-1), (s2n,s2n+1,s2n+2,...s3n-1), ..."
     return izip(*[iter(iterable)]*n)
 
-# start definate Point
-class Point:
-	def setX(self, x):
-		self.x = x
-
-	def setY(self, y):
-		self.y = y
-# end definate Point		
-
+def drawPoints(image, ptrs, bold):
+	for p in ptrs:
+		cv2.line(image, (p[0], p[1]), (p[0], p[1]),(255,0,0), bold)
+	return image
 
 def showAndStop(image):
 	cv2.imshow("image", image)
@@ -75,9 +75,12 @@ def getAllBoundaryPoints(image):
 	mask = cv2.inRange(image, lower, upper)
 	output = cv2.bitwise_and(image, image, mask = mask)
 
+	print("output.shape : {}".format(output.shape))
+
 	boundary_point = []
 	for x_idx, xs in enumerate(output) :
 		for y_idx, bpt in enumerate(xs) :
+			# bpt is the RBG value for the current point
 			if (bpt[0] + bpt[1] + bpt[2] > 0) : 
 				boundary_point.append([y_idx, x_idx])
 	# print(boundary_point)
@@ -100,7 +103,7 @@ def getAllUncatenatedPoints(image, PointBaseY):
 
 		newList = []
 		idx = 0
-		print(" oldArr[{}] : {}".format(l_i, l))
+		# print(" oldArr[{}] : {}".format(l_i, l))
 		while idx < len(l) :
 			# find the left point of an path
 			left = l[idx]
@@ -113,6 +116,14 @@ def getAllUncatenatedPoints(image, PointBaseY):
 			# find the right point of an path
 			if nextIdx < len(l) :
 				right = l[nextIdx]
+
+				# start TZ1202_1
+				isValid = testIfValidPath(image, left, right)
+				if isValid == False:
+					idx = idx + 1
+					continue
+				# end TZ1202_1
+
 				newList.append(left)
 				newList.append(right)
 
@@ -124,7 +135,7 @@ def getAllUncatenatedPoints(image, PointBaseY):
 						right_tmp = l[nextIdx]
 						nextIdx = nextIdx + 1
 			idx = nextIdx
-		print("uncatP[{}] : {}".format(l_i, newList))
+		# print("uncatP[{}] : {}".format(l_i, newList))
 
 		uncatP[l_i] = newList
 
@@ -146,8 +157,28 @@ def getPointBase10Y(PointsBaseY):
 		j = j + 1
 	return points10Y
 
+# start TZ1202_1
+def testIfValidPath(image, pl, pr):
 
+	print("{}, {}".format(pl, pr))
 
+	yaxis = pl[1]
+	xc = (pl[0] + pr[0]) / 2
+	xl = (pl[0] + xc) / 2
+	xr = (xc + pr[0]) / 2
+
+	rgbl = int(image[yaxis][xl][0]) + int(image[yaxis][xl][1]) + int(image[yaxis][xl][2])
+	rgbc = int(image[yaxis][xc][0]) + int(image[yaxis][xc][1]) + int(image[yaxis][xc][2])
+	rgbr = int(image[yaxis][xr][0]) + int(image[yaxis][xr][1]) + int(image[yaxis][xr][2])
+
+	# drawPoints(image, [[xl, yaxis], [xc, yaxis], [xr, yaxis]], 4)
+
+	# 255 * 3 is 765
+	if rgbl < 765 and rgbc < 765 and rgbr < 765:
+		return False
+
+	return True
+#ene TZ1201_1
 
 def drawPath(image, pointBaseY):
 	totalA10B = 0
@@ -156,6 +187,9 @@ def drawPath(image, pointBaseY):
 			totalA10B = totalA10B + len(l)
 
 	while totalA10B > 0:
+
+		preRightP = None # TZ1202_2
+
 		rightDown = True
 		count = 0
 		while count < len(pointBaseY) :
@@ -164,14 +198,27 @@ def drawPath(image, pointBaseY):
 				continue
 			lst = pointBaseY[count]
 			
-			print("lst : {} -  {}".format(lst, count))
+			# print("lst : {} -  {}".format(lst, count))
 			leftP = lst[0]
 			rightP = lst[1]
+
+			# start TZ1202_2
+			if preRightP == None:
+				preRightP = rightP
+			elif preRightP[0] < leftP[0]:
+				# draw from top to down again if the left point is righter 
+				# than the previous right point
+				count = count + 1
+				continue
+			else:
+				preRightP = rightP
+			# end TZ1202_2
+
 			cv2.line(image, (leftP[0], leftP[1]), (rightP[0], rightP[1]),(255,0,0),1)
 			lst.remove(leftP)
 			lst.remove(rightP)
 			totalA10B = totalA10B - 2
-			print("lst after remove : {} -  {}".format(lst, count))
+			# print("lst after remove : {} -  {}".format(lst, count))
 
 			showAndStop(image)
 			# cv2.imshow("image", image)
@@ -210,7 +257,7 @@ def printYBasedPoint(YBasePoints):
 
 def highlineYBasePoint(YBasePoints, img, bold):
 	for l in YBasePoints:
-		if (l == None):
+		if (l == None) or len(l) == 0:
 			continue
 		print("["),
 		for p in l :
@@ -222,21 +269,31 @@ def highlineYBasePoint(YBasePoints, img, bold):
 def run():
 	imagePath = getImagePath()
 	image = drawBoundaryPoints(imagePath)
+
 	BoundaryPoints = getAllBoundaryPoints(image)
+
 	boundaryPointsBaseY = restoreBoundaryPointBaseY(BoundaryPoints)
-	uncatenatePoint = getAllUncatenatedPoints(image, boundaryPointsBaseY)
-
-	pointBase10Y = getPointBase10Y(uncatenatePoint)
-
-	image = drawPath(image, pointBase10Y)
 
 	# printYBasedPoint(boundaryPointsBaseY)
 	# image = highlineYBasePoint(boundaryPointsBaseY, image, 1)
+	# showAndStop(image)
+	# return
+
+	uncatenatePoint = getAllUncatenatedPoints(image, boundaryPointsBaseY)
 
 	# printYBasedPoint(uncatenatePoint)
-	# image = highlineYBasePoint(uncatenatePoint, image, 8)
+	# image = highlineYBasePoint(uncatenatePoint, image, 4)
+	# showAndStop(image)
+	# return
 
-	# image = highlineYBasePoint(pointBase10Y, image, 8)
+
+	pointBase10Y = getPointBase10Y(uncatenatePoint)
+
+	# image = highlineYBasePoint(pointBase10Y, image, 4)
+	# showAndStop(image)
+	# return
+
+	image = drawPath(image, pointBase10Y)
 
 	# show the images
 	cv2.imshow("image", image)
